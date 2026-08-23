@@ -7,10 +7,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -18,12 +16,6 @@ import java.util.UUID;
 
 public class Auth {
     private static final Gson GSON = new Gson();
-    /** 连接超时与请求超时，避免网络异常时长时间阻塞调用线程 */
-    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
-    private static final HttpClient CLIENT = HttpClient.newBuilder()
-            .connectTimeout(CONNECT_TIMEOUT)
-            .build();
     
     public final long uid;
     public final long roomid;
@@ -75,14 +67,11 @@ public class Auth {
         String baseUrl = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo";
         String fullUrl = baseUrl + "?" + signedQuery;
 
-        HttpRequest request = HttpRequest.newBuilder(URI.create(fullUrl))
-                .timeout(REQUEST_TIMEOUT)
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(fullUrl))
                 .header("Accept", "*/*")
-                .header("Cookie", cookie)
-                .build();
+                .header("Cookie", cookie);
 
-        HttpResponse<String> response = CLIENT.send(request, 
-            HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = BiliHttp.send(requestBuilder);
         if (response.statusCode() != 200) {
             throw new IOException("getDanmuInfo HTTP " + response.statusCode());
         }

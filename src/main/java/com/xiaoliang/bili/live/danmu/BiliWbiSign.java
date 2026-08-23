@@ -5,7 +5,6 @@ import com.google.gson.JsonObject;
 
 import java.net.URI;
 import java.net.URLEncoder;
-import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -68,17 +67,9 @@ public class BiliWbiSign {
     }
 
     public static Map<String, String> getWbiKeys() throws Exception {
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(5))
-                .build();
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpResponse<String> response = BiliHttp.send(HttpRequest.newBuilder()
                 .uri(URI.create("https://api.bilibili.com/x/web-interface/nav"))
-                .GET()
-                .timeout(java.time.Duration.ofSeconds(8))
-                .build();
-
-        HttpResponse<String> response = client.send(request, 
-            HttpResponse.BodyHandlers.ofString());
+                .GET());
 
         JsonObject root = GSON.fromJson(response.body(), JsonObject.class);
         JsonObject wbiImg = root.getAsJsonObject("data")
