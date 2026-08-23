@@ -40,13 +40,21 @@ public class DanmuClient {
     }
 
     public void connect(Auth auth) {
+        // 关闭旧连接。WebSocketClient.close() 是异步的，旧连接可能仍有
+        // onClose/onError 回调到达；先置空 wsClient，使旧连接回调被
+        // "this != wsClient" 判断拦截，避免影响新连接。
         if (wsClient != null) {
-            disconnect();
+            WebSocketClient old = wsClient;
+            wsClient = null;
+            old.close();
         }
 
         wsClient = new WebSocketClient(serverUri) {
             @Override
             public void onOpen(ServerHandshake handshakedata) {
+                if (this != wsClient) {
+                    return;
+                }
                 if (connectionListener != null) {
                     connectionListener.onOpen();
                 }
@@ -63,6 +71,11 @@ public class DanmuClient {
 
             @Override
             public void onClose(int code, String reason, boolean remote) {
+                // 旧连接被替换后到达的关闭回调一律忽略，否则会误触发
+                // 重连，并 stopHeartbeat 停掉新连接的心跳。
+                if (this != wsClient) {
+                    return;
+                }
                 if (connectionListener != null) {
                     connectionListener.onClose(code, reason, remote);
                 }
@@ -71,6 +84,9 @@ public class DanmuClient {
 
             @Override
             public void onError(Exception ex) {
+                if (this != wsClient) {
+                    return;
+                }
                 if (connectionListener != null) {
                     connectionListener.onError(ex);
                 }
@@ -82,6 +98,9 @@ public class DanmuClient {
 
             @Override
             public void onMessage(ByteBuffer bytes) {
+                if (this != wsClient) {
+                    return;
+                }
                 List<Packet> packets = Packet.unPack(bytes);
                 packets.forEach(DanmuClient.this::onPacket);
             }
@@ -130,8 +149,9 @@ public class DanmuClient {
     public void disconnect() {
         stopHeartbeat();
         if (wsClient != null) {
-            wsClient.close();
+            WebSocketClient old = wsClient;
             wsClient = null;
+            old.close();
         }
     }
 
@@ -194,6 +214,8 @@ public class DanmuClient {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         connection.setRequestMethod("POST");
         connection.setDoOutput(true);
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(8000);
         connection.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
         connection.setRequestProperty("Cookie", cookie);
 

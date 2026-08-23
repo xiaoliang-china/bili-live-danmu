@@ -68,10 +68,13 @@ public class BiliWbiSign {
     }
 
     public static Map<String, String> getWbiKeys() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(5))
+                .build();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("https://api.bilibili.com/x/web-interface/nav"))
                 .GET()
+                .timeout(java.time.Duration.ofSeconds(8))
                 .build();
 
         HttpResponse<String> response = client.send(request, 

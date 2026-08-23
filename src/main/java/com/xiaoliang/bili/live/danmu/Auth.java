@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -17,6 +18,12 @@ import java.util.UUID;
 
 public class Auth {
     private static final Gson GSON = new Gson();
+    /** 连接超时与请求超时，避免网络异常时长时间阻塞调用线程 */
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(8);
+    private static final HttpClient CLIENT = HttpClient.newBuilder()
+            .connectTimeout(CONNECT_TIMEOUT)
+            .build();
     
     public final long uid;
     public final long roomid;
@@ -38,24 +45,22 @@ public class Auth {
 
     public static @NotNull Auth create(long roomid, String cookie) 
             throws IOException, InterruptedException {
-        String key = getKey(roomid, cookie);
+        DanmuInfo info = getDanmuInfo(roomid, cookie);
         String buvid = extractCookieValue("buvid3", cookie);
         long uid = Long.parseLong(Objects.requireNonNull(
             extractCookieValue("DedeUserID", cookie)));
-        return new Auth(roomid, uid, buvid, key);
+        return new Auth(info.roomId, uid, buvid, info.token);
     }
 
     public static @NotNull Auth create(long roomid) 
             throws IOException, InterruptedException {
-        String key = getKey(roomid, "");
+        DanmuInfo info = getDanmuInfo(roomid, "");
         String buvid = generateUUID();
-        return new Auth(roomid, 0, buvid, key);
+        return new Auth(info.roomId, 0, buvid, info.token);
     }
 
-    private static String getKey(long roomId, String cookie) 
+    private static DanmuInfo getDanmuInfo(long roomId, String cookie) 
             throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newHttpClient();
-
         Map<String, Object> params = new HashMap<>();
         params.put("id", roomId);
         params.put("type", "0");
@@ -71,17 +76,38 @@ public class Auth {
         String fullUrl = baseUrl + "?" + signedQuery;
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(fullUrl))
+                .timeout(REQUEST_TIMEOUT)
                 .header("Accept", "*/*")
                 .header("Cookie", cookie)
                 .build();
 
-        HttpResponse<String> response = client.send(request, 
+        HttpResponse<String> response = CLIENT.send(request, 
             HttpResponse.BodyHandlers.ofString());
-        
+        if (response.statusCode() != 200) {
+            throw new IOException("getDanmuInfo HTTP " + response.statusCode());
+        }
+
         JsonObject root = GSON.fromJson(response.body(), JsonObject.class);
-        return root.getAsJsonObject("data")
-                   .get("token")
-                   .getAsString();
+        int code = root.has("code") ? root.get("code").getAsInt() : -1;
+        if (code != 0) {
+            throw new IOException("getDanmuInfo 接口返回错误 code=" + code
+                    + " message=" + (root.has("message") ? root.get("message").getAsString() : "")
+                    + " body=" + response.body());
+        }
+        JsonObject data = root.has("data") && !root.get("data").isJsonNull()
+                ? root.getAsJsonObject("data") : null;
+        if (data == null || !data.has("token") || data.get("token").isJsonNull()) {
+            throw new IOException("getDanmuInfo 响应缺少 token 字段: " + response.body());
+        }
+        // 认证使用真实房间号（room_id）。新版接口已移除 room_id 字段，
+        // 存在时优先使用（兼容短房间号），缺失时回退到入参房间号。
+        long realRoomId = data.has("room_id") && !data.get("room_id").isJsonNull()
+                ? data.get("room_id").getAsLong() : roomId;
+        return new DanmuInfo(realRoomId, data.get("token").getAsString());
+    }
+
+    /** getDanmuInfo 接口返回的认证信息 */
+    private record DanmuInfo(long roomId, String token) {
     }
 
     private static @Nullable String extractCookieValue(String cookieName, 
