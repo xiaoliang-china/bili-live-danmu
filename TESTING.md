@@ -109,9 +109,9 @@ build/reports/tests/test/index.html
 ```
 
 成功后会在 `build/libs/` 目录生成：
-- `bili-live-danmu-4.0.0.jar` - 主 JAR 包
-- `bili-live-danmu-4.0.0-sources.jar` - 源码 JAR
-- `bili-live-danmu-4.0.0-javadoc.jar` - 文档 JAR
+- `bili-live-danmu-1.1.0.jar` - 主 JAR 包
+- `bili-live-danmu-1.1.0-sources.jar` - 源码 JAR
+- `bili-live-danmu-1.1.0-javadoc.jar` - 文档 JAR
 
 ### 2. 发布到本地 Maven 仓库
 
@@ -119,7 +119,7 @@ build/reports/tests/test/index.html
 ./gradlew publishToMavenLocal
 ```
 
-这会将库安装到 `~/.m2/repository/cn/liqing/bili-live-danmu/4.0.0/`
+这会将库安装到 `~/.m2/repository/com/xiaoliang/bili-live-danmu/1.1.0/`
 
 ### 3. 在其他项目中使用
 
@@ -133,7 +133,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.xiaoliang:bili-live-danmu:4.0.0'
+    implementation 'com.xiaoliang:bili-live-danmu:1.1.0'
 }
 ```
 
@@ -142,7 +142,7 @@ dependencies {
 <dependency>
     <groupId>com.xiaoliang</groupId>
     <artifactId>bili-live-danmu</artifactId>
-    <version>4.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
