@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -18,8 +19,8 @@ public class Packet {
     public final Operation operation;
 
     /**
-     * 如果Version=0，Body中就是实际发送的数据。
-     * 如果Version=2，Body中是经过压缩后的数据，请使用zlib解压，然后解析。
+     * 0 未压缩，1 心跳人气（Int32），2 zlib 压缩，3 brotli 压缩。
+     * 本库发出的心跳和鉴权包不压缩。
      */
     public final short version = 0;
 
@@ -53,19 +54,27 @@ public class Packet {
         int len = buffer.limit();
         while (offset + HEADER_LENGTH <= len) {
             int bodyLen = buffer.getInt(offset) - HEADER_LENGTH;
+            if (bodyLen < 0 || offset + HEADER_LENGTH + bodyLen > len) {
+                LOGGER.error("弹幕包长度非法: offset={} bodyLen={} limit={}", offset, bodyLen, len);
+                break;
+            }
             try {
                 short ver = buffer.getShort(offset + 6);
-                Operation op = Operation.parse(buffer.getInt(8));
+                Operation op = Operation.parse(buffer.getInt(offset + 8));
                 byte[] body = new byte[bodyLen];
                 buffer.get(offset + HEADER_LENGTH, body, 0, bodyLen);
 
-                if (ver == 2) {
+                // 2 是 zlib，3 是 brotli。压缩包里是下一批完整协议包，需要再解一次。
+                if (ver == 2 || ver == 3) {
                     try {
-                        body = decompress(body);
+                        body = ver == 3 ? decompressBrotli(body) : decompress(body);
                         packs.addAll(unPack(ByteBuffer.wrap(body)));
-                    } catch (IOException e) {
-                        LOGGER.error("解压失败", e);
+                    } catch (IOException | UnsatisfiedLinkError | NoClassDefFoundError e) {
+                        LOGGER.error("解压失败 ver={}", ver, e);
                     }
+                    continue;
+                }
+                if (op == null) {
                     continue;
                 }
 
@@ -81,6 +90,28 @@ public class Packet {
         ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
         InflaterInputStream iis = new InflaterInputStream(inputStream);
         return iis.readAllBytes();
+    }
+
+    /**
+     * protover=3 的包体是 brotli。org.brotli:dec 在运行时存在时使用，
+     * 缺失时抛出 IOException，调用方跳过这一包，不影响 zlib 包。
+     */
+    static byte @NotNull [] decompressBrotli(byte @NotNull [] data) throws IOException {
+        try {
+            Class<?> decoderClass = Class.forName("org.brotli.dec.BrotliInputStream");
+            try (var input = new ByteArrayInputStream(data);
+                 var brotli = (java.io.InputStream) decoderClass
+                         .getConstructor(java.io.InputStream.class)
+                         .newInstance(input);
+                 var output = new ByteArrayOutputStream()) {
+                brotli.transferTo(output);
+                return output.toByteArray();
+            }
+        } catch (IOException e) {
+            throw e;
+        } catch (ReflectiveOperationException e) {
+            throw new IOException("brotli 解码不可用", e);
+        }
     }
 
     public enum Operation {
@@ -117,7 +148,7 @@ public class Packet {
                 case 5 -> Operation.SEND_SMS_REPLY;
                 case 7 -> Operation.AUTH;
                 case 8 -> Operation.AUTH_REPLY;
-                default -> throw new IllegalStateException("Unexpected value: " + code);
+                default -> null;
             };
         }
     }

@@ -5,7 +5,9 @@ import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.zip.Deflater;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -139,5 +141,67 @@ class PacketTest {
         List<Packet> unpacked = Packet.unPack(packed);
         assertEquals(1, unpacked.size());
         assertArrayEquals(largeBody, unpacked.get(0).body);
+    }
+
+    @Test
+    void testUnpackReadsOperationFromEachPacket() {
+        Packet first = new Packet(Packet.Operation.HEARTBEAT_REPLY, new byte[]{0, 0, 0, 1});
+        Packet second = new Packet(Packet.Operation.SEND_SMS_REPLY, "{\"cmd\":\"SEND_GIFT\"}".getBytes(StandardCharsets.UTF_8));
+        ByteBuffer packed = ByteBuffer.allocate(first.length() + second.length());
+        packed.put(first.pack());
+        packed.put(second.pack());
+        packed.flip();
+
+        List<Packet> unpacked = Packet.unPack(packed);
+
+        assertEquals(2, unpacked.size());
+        assertEquals(Packet.Operation.HEARTBEAT_REPLY, unpacked.get(0).operation);
+        assertEquals(Packet.Operation.SEND_SMS_REPLY, unpacked.get(1).operation);
+        assertEquals("{\"cmd\":\"SEND_GIFT\"}", new String(unpacked.get(1).body, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testUnpackZlibBatch() {
+        Packet inner = new Packet(Packet.Operation.SEND_SMS_REPLY, "{\"cmd\":\"SEND_GIFT\"}".getBytes(StandardCharsets.UTF_8));
+        byte[] compressed = deflate(inner.pack().array());
+        ByteBuffer outer = ByteBuffer.allocate(Packet.HEADER_LENGTH + compressed.length);
+        outer.putInt(Packet.HEADER_LENGTH + compressed.length);
+        outer.putShort(Packet.HEADER_LENGTH);
+        outer.putShort((short) 2);
+        outer.putInt(Packet.Operation.SEND_SMS_REPLY.code);
+        outer.putInt(0);
+        outer.put(compressed);
+        outer.flip();
+
+        List<Packet> unpacked = Packet.unPack(outer);
+
+        assertEquals(1, unpacked.size());
+        assertEquals("{\"cmd\":\"SEND_GIFT\"}", new String(unpacked.get(0).body, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void testUnknownOperationIsSkipped() {
+        ByteBuffer buffer = ByteBuffer.allocate(Packet.HEADER_LENGTH);
+        buffer.putInt(Packet.HEADER_LENGTH);
+        buffer.putShort(Packet.HEADER_LENGTH);
+        buffer.putShort((short) 0);
+        buffer.putInt(99);
+        buffer.putInt(0);
+        buffer.flip();
+
+        assertTrue(Packet.unPack(buffer).isEmpty());
+        assertNull(Packet.Operation.parse(99));
+    }
+
+    private static byte[] deflate(byte[] data) {
+        Deflater deflater = new Deflater();
+        deflater.setInput(data);
+        deflater.finish();
+        byte[] out = new byte[data.length + 64];
+        int len = deflater.deflate(out);
+        deflater.end();
+        byte[] result = new byte[len];
+        System.arraycopy(out, 0, result, 0, len);
+        return result;
     }
 }

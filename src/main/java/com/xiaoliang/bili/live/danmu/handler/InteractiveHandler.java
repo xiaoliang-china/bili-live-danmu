@@ -24,7 +24,12 @@ public class InteractiveHandler implements MessageHandler {
 
     @Override
     public boolean canHandle(@NotNull Message message) {
-        return message.cmd != null && message.cmd.startsWith("INTERACT_WORD");
+        if (message.cmd == null) {
+            return false;
+        }
+        // INTERACT_WORD / INTERACT_WORD_V2 是进场、关注、分享；
+        // LIKE_INFO_V3_CLICK 是点赞。LIKE_INFO_V3_UPDATE 只有累计次数，不提示。
+        return message.cmd.startsWith("INTERACT_WORD") || message.cmd.startsWith("LIKE_INFO_V3_CLICK");
     }
 
     @Override
@@ -54,6 +59,7 @@ public class InteractiveHandler implements MessageHandler {
             }
 
             interactive.type = getInt(dataObj, "msg_type", getInt(dataObj, "trigger_type", 0));
+            interactive.text = getString(dataObj, "like_text", "");
 
             if ((isBlank(interactive.user.uid) || isBlank(interactive.user.name) || interactive.type == 0)
                     && dataObj.has("pb")

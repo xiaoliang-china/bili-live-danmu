@@ -180,16 +180,21 @@ public class DanmuClient {
             try {
                 message = GSON.fromJson(bodyStr, Message.class);
             } catch (Exception ex) {
-                throw new RuntimeException("解析消息出错", ex);
+                LOGGER.warn("解析消息出错: {}", bodyStr, ex);
+                return;
             }
-            
-            if (message.cmd == null) {
-                throw new RuntimeException("消息包中没有cmd");
+
+            if (message == null || message.cmd == null) {
+                return;
             }
 
             for (MessageHandler handler : handlers) {
-                if (handler.canHandle(message)) {
-                    handler.handle(message);
+                try {
+                    if (handler.canHandle(message)) {
+                        handler.handle(message);
+                    }
+                } catch (Exception ex) {
+                    LOGGER.error("处理消息失败 cmd={}", message.cmd, ex);
                 }
             }
         }
@@ -202,6 +207,9 @@ public class DanmuClient {
     public static void send(String cookie, String roomId, String message) throws IOException {
         String url = "https://api.live.bilibili.com/msg/send";
         String csrf = extractCookieValue("bili_jct", cookie);
+        if (csrf == null || csrf.isBlank()) {
+            throw new IOException("Cookie 中缺少 bili_jct，无法发送弹幕");
+        }
         String postData = String.format(
                 "color=16777215&fontsize=25&mode=1&msg=%s&rnd=%d&roomid=%s&bubble=0&csrf_token=%s&csrf=%s",
                 java.net.URLEncoder.encode(message, StandardCharsets.UTF_8),

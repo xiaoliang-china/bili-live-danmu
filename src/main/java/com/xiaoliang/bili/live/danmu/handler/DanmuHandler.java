@@ -9,7 +9,6 @@ import com.google.gson.JsonElement;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Objects;
 import java.util.function.Consumer;
 
 public class DanmuHandler implements MessageHandler {
@@ -22,12 +21,27 @@ public class DanmuHandler implements MessageHandler {
 
     @Override
     public boolean canHandle(Message message) {
-        if (!Objects.equals(message.cmd, "DANMU_MSG"))
+        if (message.cmd == null || !message.cmd.startsWith("DANMU_MSG"))
             return false;
-        if (message.info == null)
+        if (message.info == null || !message.info.isJsonArray())
             return false;
         JsonArray info = message.info.getAsJsonArray();
-        return info.get(0).getAsJsonArray().get(12).getAsInt() != 1;
+        return !isEmoji(info);
+    }
+
+    static boolean isEmoji(JsonArray info) {
+        if (info == null || info.isEmpty() || !info.get(0).isJsonArray()) {
+            return false;
+        }
+        JsonArray head = info.get(0).getAsJsonArray();
+        if (head.size() <= 12 || head.get(12).isJsonNull()) {
+            return false;
+        }
+        try {
+            return head.get(12).getAsInt() == 1;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Override
@@ -42,9 +56,11 @@ public class DanmuHandler implements MessageHandler {
             
             //解析用户
             var danmu = new Danmu();
-            danmu.user.uid = infoArray.get(2).getAsJsonArray().get(0).getAsString();
-            danmu.user.name = infoArray.get(2).getAsJsonArray().get(1).getAsString();
-            danmu.user.guardLevel = infoArray.get(7).getAsInt();
+            JsonArray user = infoArray.get(2).getAsJsonArray();
+            danmu.user.uid = user.get(0).isJsonNull() ? "" : user.get(0).getAsString();
+            danmu.user.name = user.size() > 1 && !user.get(1).isJsonNull() ? user.get(1).getAsString() : "";
+            danmu.user.guardLevel = infoArray.size() > 7 && infoArray.get(7).isJsonPrimitive()
+                    ? infoArray.get(7).getAsInt() : 0;
 
             //解析粉丝团
             JsonElement fansMedal = infoArray.get(3);

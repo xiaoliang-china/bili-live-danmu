@@ -11,7 +11,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 public class Auth {
@@ -39,8 +38,18 @@ public class Auth {
             throws IOException, InterruptedException {
         DanmuInfo info = getDanmuInfo(roomid, cookie);
         String buvid = extractCookieValue("buvid3", cookie);
-        long uid = Long.parseLong(Objects.requireNonNull(
-            extractCookieValue("DedeUserID", cookie)));
+        if (buvid == null || buvid.isBlank()) {
+            buvid = generateUUID();
+        }
+        String uidText = extractCookieValue("DedeUserID", cookie);
+        long uid = 0;
+        if (uidText != null && !uidText.isBlank()) {
+            try {
+                uid = Long.parseLong(uidText);
+            } catch (NumberFormatException ignored) {
+                uid = 0;
+            }
+        }
         return new Auth(info.roomId, uid, buvid, info.token);
     }
 

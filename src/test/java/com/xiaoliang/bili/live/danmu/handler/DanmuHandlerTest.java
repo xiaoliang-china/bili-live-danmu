@@ -99,6 +99,18 @@ class DanmuHandlerTest {
     }
 
     @Test
+    void testCanHandleMirroredDanmu() {
+        String json = "{\"cmd\":\"DANMU_MSG_MIRROR\",\"info\":[[0,1,25,16777215,1234567890,1234567890,0,\"abc\",0,0,0,\"\",0],\"镜像弹幕\",[321,\"镜像用户\",0,0,0,10000,1],[],0,0,1,0,0,\"\"]}";
+
+        Message message = gson.fromJson(json, Message.class);
+        assertTrue(handler.canHandle(message));
+        handler.handle(message);
+
+        assertEquals("镜像弹幕", receivedDanmus.get(0).body);
+        assertEquals("镜像用户", receivedDanmus.get(0).user.name);
+    }
+
+    @Test
     void testCannotHandleEmojiDanmu() {
         // 测试不处理表情弹幕（info[0][12] == 1）
         String json = "{\"cmd\":\"DANMU_MSG\",\"info\":[[0,1,25,16777215,1234567890,1234567890,0,\"abc\",0,0,0,\"\",1],\"表情\",[456,\"用户\",0,0,0,10000,1],[],0,0,1,0,0,\"\"]}";
